@@ -1,4 +1,5 @@
 require('dotenv').config();
+const https = require('https');
 const db = require('./db.js');
 const discord = require('discord.js');
 
@@ -36,7 +37,52 @@ const dmFilter = (message) => message.author.id === user.id;
  * @param {*} user 
  */
 async function sendAccountForm(user) {
-	let accountEmbed = new discord.MessageEmbed();
+	let accountEmbed = new discord.MessageEmbed()
+	.setColor('#F76902')
+	.setTitle('Account')
+	.setDescription('Message your Epic Games ID to complete your registration.');
+
+	let accountMessage = await user.send({ embeds: [accountEmbed] });
+
+	let accountMessageCollector = accountMessage.channel.createMessageCollector({ dmFilter });
+	accountMessageCollector.on('collect', async (message) => {
+		let epicId = message.content;
+		let mmr = 0;
+
+		let options = {
+			hostname: 'api.tracker.gg',
+			path: `/api/v2/rocket-league/standard/profile/epic/${epicId}`,
+			method: 'GET'
+		};
+
+		let data = '';
+		https.get(options, (response) => {
+			response.on('data', (chunk) => {
+				data += chunk;
+			});
+
+			response.on('end', () => {
+				if (response.statusCode === 200) {
+					try {
+						let json = JSON.parse(data);
+
+						if (json.data.segments != null) { // we have player data
+							accountMessageCollector.stop();
+						}
+						else { // couldn't find the player
+							message.channel.send(`Couldn't find player ${epicId}. Please send a valid Epic Games ID.`);
+						}
+					}
+					catch (e) {
+						console.error('Something went wrong with the response!');
+					}
+				}
+				else {
+					console.error(`Status code: ${response.statusCode}`);
+				}
+			});
+		});
+	});
 }
 
 /**
